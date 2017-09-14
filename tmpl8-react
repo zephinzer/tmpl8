@@ -1,0 +1,163 @@
+#!/usr/bin/env node
+var c = require('chalk');
+var fs = require('fs');
+var Q = require('q');
+var {spawn} = require('child_process');
+var stream = require('stream');
+var path = require('path');
+var tmpl8react = require('commander');
+var package = require(path.join(__dirname, '/package.json'));
+
+var pathToNewProject = null;
+var pathToTemplate = path.join(__dirname, '/_react');
+
+tmpl8react.version(package.version)
+  .usage('[options] <directory_name>')
+  .option('-N, --use-npm', 'use NPM to install dependencies (default)')
+  .option('-Y, --use-yarn', 'use Yarn to install dependencies (requires Yarn to be installed)')
+  .action(function(directoryName) {
+    pathToNewProject = path.join(process.cwd(), directoryName);
+  })
+  .parse(process.argv);
+
+if(pathToNewProject === null) {
+  errorOutAndDie('No directory_name was specified.', function() {
+    tmpl8react.help();
+  });
+}
+
+createProjectAt(pathToNewProject)
+  .then(cleanTemplateFiles)
+  .then(copyTemplateFiles)
+  .then(installDependencies)
+  .then(cleanGitHistory)
+  .then(function() {
+    console.info('DONE.');
+  })
+  .catch(function(err) {
+    console.log(err);
+  });
+
+function cleanTemplateFiles() {
+  var q = Q.defer();
+  var tasks = 0;
+  var pathToNodeModules = path.join(pathToTemplate, '/node_modules');
+  var pathToBuildFiles = path.join(pathToTemplate, '/assets/build');
+  function checkIfDone() {
+    if(--tasks === 0) { q.resolve(); }
+  }
+  ++tasks; fs.unlink(pathToNodeModules, checkIfDone);
+  ++tasks; fs.unlink(pathToBuildFiles, checkIfDone);
+  return q.promise;
+};
+
+function copyTemplateFiles() {
+  console.info('Copying files to', pathToNewProject + '...');
+  return recursivlyCopyFiles(pathToTemplate, pathToNewProject);
+};
+
+function installDependencies() {
+  var q = Q.defer();
+  if(tmpl8react.useYarn) {
+    var yarnAvailabilityCheck = spawn('yarn', ['--version'], { shell: true });
+    var yarnAvailable = false;
+    yarnAvailabilityCheck.stdout.on('data', function(data) {
+      var output = data.toString();
+      yarnAvailable = (output.match(/^[0-9]+\.[0-9]+\.[0-9]+[\w]*/) !== null);
+    });
+    yarnAvailabilityCheck.stderr.on('data', function(data) {
+      var output = data.toString();
+      yarnAvailable = !(output.indexOf('not found') !== -1);
+    });
+    yarnAvailabilityCheck.on('exit', function(exitCode) {
+      if(exitCode === 0 && yarnAvailable === true) {
+        installDependenciesWith('yarn', pathToNewProject).then(q.resolve);
+      } else {
+        errorOutAndDie('Yarn could not be found.');
+      }
+    })
+  } else {
+    installDependenciesWith('npm', pathToNewProject).then(q.resolve);
+  }
+  return q.promise;
+};
+
+function cleanGitHistory() {
+  var q = Q.defer();
+  var tasks = 0;
+  var pathToGitHistory = path.join(pathToNewProject, '/.git');
+  function checkIfDone() {
+    if(--tasks === 0) { q.resolve(); }
+  }
+  ++tasks; fs.unlink(pathToGitHistory, checkIfDone);
+  return q.promise;
+};
+
+function recursivlyCopyFiles(fromPath, toPath) {
+  var deferred = Q.defer();
+  var fileListing = fs.readdirSync(fromPath);
+  var jobCount = fileListing.length;
+  function checkIfDone() {
+    if(--jobCount == 0) { deferred.resolve(); }
+  }
+  fileListing.forEach(function(item) {
+    var currentListing = path.join(fromPath, item);
+    var nonExistentListing = path.join(toPath, item);
+    fs.stat(currentListing, function(err, stats) {
+      if(stats.isDirectory()) {
+        createFolderAt(nonExistentListing).then(function() {
+          recursivlyCopyFiles(currentListing, nonExistentListing).then(checkIfDone);
+        });
+      } else {
+        fs.writeFile(nonExistentListing, fs.readFileSync(currentListing).toString(), checkIfDone);
+        console.info('Created file', nonExistentListing + '...');
+      }
+    });
+  });
+  return deferred.promise;
+};
+
+function createFolderAt(nonExistentPath) {
+  var deferred = Q.defer();
+  fs.exists(nonExistentPath, function(exists) {
+    if(!exists) {
+      createFolderAt(path.resolve(nonExistentPath, '..')).then(function() {
+        fs.mkdir(nonExistentPath, function() {
+          console.info('Created folder at', nonExistentPath + '...');
+          deferred.resolve(nonExistentPath);
+        });
+      });
+    } else {
+      deferred.resolve(nonExistentPath);
+    }
+  });
+  return deferred.promise;
+};
+
+function createProjectAt() {
+  console.info('Initialising project at', pathToNewProject + '...');
+  return createFolderAt(pathToNewProject);
+};
+
+function errorOutAndDie(message, beforeDying) {
+  console.error(c.red(c.bold('ERROR:'), message));
+  (typeof beforeDying === 'function') && beforeDying();
+  process.exit(1);
+};
+
+function installDependenciesWith(packageManager, atLocation) {
+  var q = Q.defer();
+  console.info('Installing dependencies with', packageManager + ' at', atLocation + '...');
+  var installation = spawn(packageManager, ['install'], {
+    cwd: atLocation,
+    stdio: [
+      process.stdin,
+      process.stdout,
+      process.stderr,
+    ]
+  });
+  installation.on('exit', function(exitCode) {
+    q.resolve();
+  });
+  return q.promise;
+}

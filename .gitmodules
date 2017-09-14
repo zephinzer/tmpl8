@@ -1,0 +1,3 @@
+[submodule "_react"]
+	path = _react
+	url = git@github.com:zephinzer/tmpl8-react.git

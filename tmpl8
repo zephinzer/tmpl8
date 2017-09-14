@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+var path = require('path');
+var tmpl8 = require('commander');
+var package = require(path.join(__dirname, '/package.json'));
+
+tmpl8.version(package.version)
+  .usage('[command] [options] <directory_name>')
+  .command('react', 'seeds a React project')
+  .parse(process.argv);

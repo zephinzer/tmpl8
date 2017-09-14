@@ -1,0 +1,23 @@
+{
+  "name": "tmpl8",
+  "version": "0.0.1",
+  "description": "Templater tool",
+  "main": "index.js",
+  "bin": "./tmpl8",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "template",
+    "seeder",
+    "start",
+    "project"
+  ],
+  "author": "zephinzer",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "chalk": "^2.1.0",
+    "commander": "^2.11.0",
+    "q": "^1.5.0"
+  }
+}
