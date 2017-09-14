@@ -1,6 +1,6 @@
 {
   "name": "tmpl8",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Templater tool",
   "main": "index.js",
   "bin": "./tmpl8",
